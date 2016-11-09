@@ -12,8 +12,9 @@ $config = array(
 	'username'	=> 'chrysu76',
 	'password'	=> 'Augunus76!',
 	'path'		=> '',
-	'sync'		=> true,
+	'sync'		=> false,
 	'sync_dir'	=> 'ghostffFTP',
+	'UI'		=> true,
 	'test'		=> true 
 );
 
@@ -21,4 +22,4 @@ $ftp = new Ftp($config);
 
 //var_dump($ftp->erros);
 
-var_dump( $ftp->directories('permisions'));
+echo( $ftp->directories('permisions'));
