@@ -13,6 +13,8 @@ class Ftp
     private $password = null;
     private $connection = null;
     private $path = null;
+	private $sync = false;
+	private $sync_dir;
     
     
     private function connect()
@@ -20,14 +22,15 @@ class Ftp
         @$ftp_stream = ftp_connect($this->host, $this->port, $this->timeout);
         if ( ! $ftp_stream && $this->test) {
             $this->erros[] = 'Couldn\'t connect as ' . $ftp_address;
+			return false;
         }
         else {
-            
             $this->connection = $ftp_stream;
             @$ftp_stream = ftp_login($ftp_stream, $this->username, $this->password);
             if( ! @ $ftp_stream && $this->test) {
                 $this->erros[] = 'Couldn\'t connect (Wrong username or password)';
             }
+			return true;
         }
     }
     
@@ -43,6 +46,7 @@ class Ftp
     public function __construct($config)
     {
         foreach ($config as $name => $value) {
+			$name = trim($name);
             if (property_exists($this, $name)) {
                 $this->{$name} = $value;
             }
@@ -50,8 +54,18 @@ class Ftp
                 $this->erros[] = 'invalid property ' . $name;
             }
         }
-        
-        $this->connect();
+		
+       if ($this->connect()) {
+			if ($this->sync) {
+				
+				$DS = DIRECTORY_SEPARATOR;
+				$this->sync_dir = __DIR__ . $DS . '..' . $DS . $this->sync_dir;
+				
+				if ( ! file_exists($this->sync_dir)) {
+					mkdir($this->sync_dir);
+				}	
+			}
+	   }
     }
     
     public function __get($name)
@@ -61,56 +75,76 @@ class Ftp
         }
     }
     
-    public function directories($type)
+    public function directories($type = null)
     {
         /*
         * Switching to passive mode to prevent boolean return cause by server's firewall configuration
         */
         ftp_pasv($this->connection, true);
-        if ( strcasecmp($type, 'dirs') == 0) {
             
-            $files = ftp_rawlist($this->connection, $this->path);
-            //remove . and .. from 
-            array_shift($files);
-            array_shift($files);
-            
-            $list =  array();
-            array_map(function($name) use (&$list) {
-                
-                $chunks = preg_split("/\s+/", $name);
+		$files = ftp_rawlist($this->connection, $this->path);
+		//remove . and .. from 
+		array_shift($files);
+		array_shift($files);
+		
+		$list =  array();
+		array_map(function($name) use (&$list, $type) {
+			
+			$chunks = preg_split("/\s+/", $name);
 
-                if ($chunks[0][0] == 'd' || $chunks[0][0] == '-') {
-                    $item = array();
-                    list(
-                        $item['permisions'],
-                        $item['number'],
-                        $item['user'],
-                        $item['group'],
-                        $item['size'],
-                        $item['month'],
-                        $item['day'],
-                        $item['time']
-                    ) = $chunks; 
-    
-                    $list[$chunks[8]] = $item;
-                }
-                
-            }, $files);
+			if ($chunks[0][0] == 'd' || $chunks[0][0] == '-') {
+				$item = array();
+				list(
+					$item['permisions'],
+					$item['number'],
+					$item['user'],
+					$item['group'],
+					$item['size'],
+					$item['month'],
+					$item['day'],
+					$item['time']
+				) = $chunks; 
+				
+				if ($this->sync) {
+					if ($chunks[0][0] == 'd') {
+						
+						$path = $this->sync_dir . DIRECTORY_SEPARATOR . $chunks[8];
+						if ( ! file_exists($path)) {
+							mkdir($path);
+						}
+					}
+					else {
+						ftp_get(
+							$this->connection,
+							$this->sync_dir . DIRECTORY_SEPARATOR . $chunks[8],
+							$chunks[8],
+							FTP_BINARY
+						);
+					}
+				}
+				
+				if ($type) {
+					if (array_key_exists($type, $item)) {
+						$list[$chunks[8]] = $item[$type];
+					}
+					else {
+						$this->erros[] = 'invalid directories Key ' . $type;	
+					}
+				}
+				else {
+					$list[$chunks[8]] = $item;	
+				}
+			}
+			
+		}, $files);
+		
+		return $list;
 
-            return $list;
-        }
-        elseif (strcasecmp($type, 'raw') == 0) {
-            return ftp_rawlist($this->connection, $this->path);
-        }
-        else {
-            return ftp_nlist($this->connection, $this->path);
-        }
     }
     
     
     public function listDirectries()
     {
-        $dir = null;
         $files = $this->directories('dirs');
 
 
@@ -121,20 +155,7 @@ class Ftp
             return -1;
         });
         
-        
-
-        foreach ($files as $names => $attr) {
-            
-            $icon = '';
-            if ($attr['permisions'][0] == 'd') {
-                $icon = '<span class="dir_icon">&#128194;</span>';
-            }
-            elseif ($attr['permisions'][0] == '-') {
-                $icon = '<span class="file_icon"></span>';
-            }
-            $dir .= '<div class="dir">' . $icon .  $names . '</div>';
-        }
-        return $dir;
+        return $files;
     }
 }
 
