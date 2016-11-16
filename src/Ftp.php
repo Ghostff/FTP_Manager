@@ -17,22 +17,30 @@ class Ftp
 	private $sync_dir;
 	private $UI = false;
     
+	
+	private $connected = false;
+	
+	private $styled = false;
     
     private function connect()
     {
         @$ftp_stream = ftp_connect($this->host, $this->port, $this->timeout);
         if ( ! $ftp_stream && $this->test) {
             $this->erros[] = 'Couldn\'t connect as ' . $ftp_address;
-			return false;
         }
         else {
             $this->connection = $ftp_stream;
             @$ftp_stream = ftp_login($ftp_stream, $this->username, $this->password);
-            if( ! @ $ftp_stream && $this->test) {
+            if( ! @$ftp_stream && $this->test) {
                 $this->erros[] = 'Couldn\'t connect (Wrong username or password)';
             }
-			return true;
+			else {
+				$this->connected = true;
+				return true;
+			}
         }
+		$this->connected = false;
+		return false;
     }
     
     private function isDirectory($dir, $conn_id = null)
@@ -58,7 +66,7 @@ class Ftp
 		
        if ($this->connect()) {
 			if ($this->sync) {
-				
+			
 				$DS = DIRECTORY_SEPARATOR;
 				$this->sync_dir = __DIR__ . $DS . '..' . $DS . $this->sync_dir;
 				
@@ -78,6 +86,9 @@ class Ftp
     
     public function directories($type = null)
     {
+		if ( ! $this->connected) {
+			return;	
+		}
         /*
         * Switching to passive mode to prevent boolean return cause by server's firewall configuration
         */
@@ -137,6 +148,9 @@ class Ftp
 					}
 				}
 				else {
+					if ($this->UI) {
+						$ui[$chunks[8]] = $item;
+					}
 					$list[$chunks[8]] = $item;	
 				}
 			}
@@ -154,17 +168,22 @@ class Ftp
     
     private function UIStylesheet()
     {
+		if ($this->styled) {
+			return;	
+		}
         $style = '<style>
+					form{
+						margin:2px;
+					}
                     .dir{
                     	border:1px solid #ddd;
-                    	font-family: "Gill Sans", "Gill Sans MT", "Myriad Pro", "DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
+                    	font-family: "Gill Sans", "Gill Sans MT", "Myriad Pro",
+						"DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
                     	font-size:13px;
                     	border-radius: 5px;
-                    	max-width: 250px;
-                    	width: 150px;
-                    	margin-bottom: 5px;
-                    	padding: 0px 0 5px 10px;
+                    	padding: 2px;
                     	cursor:pointer;
+						text-align: left;
                     }
                     .dir:hover{
                     	background: #efefef;
@@ -182,9 +201,22 @@ class Ftp
                     }
                 </style>' . PHP_EOL;
         
+		$this->styled = true;
         return $style;
     }
     
+	private function isPost($name, $is_dir)
+	{
+		$new_name = str_replace('.', '_', $name);
+		$dir_ptr = $this->path;
+		
+		if (isset($_POST[$new_name])) {
+			
+			$this->path = $name;
+			return '<div style="margin-left:20px;">' . $this->directories() . '</div>';
+		}
+	}
+	
     private function UIRender($files)
     {
         $dir = null;
@@ -198,16 +230,28 @@ class Ftp
         
         foreach ($files as $names => $attr) {            
             $icon = '';
+			$is_dir = false;
             if ($attr['permisions'][0] == 'd') {
+				$is_dir = true;
                 $icon = '<span class="dir_icon">&#128194;</span>';
             }
             elseif ($attr['permisions'][0] == '-') {
                 $icon = '<span class="file_icon"></span>';
             }
-            $dir .= '<div class="dir">' . $icon .  $names . '</div>';
+            $dir .= '<form method="post">
+						<button class="dir" type="submit" name="' . $names .'">
+							' . $icon .  $names . 
+						'</button>
+					 </form>' .  $this->isPost($names, $is_dir);
         }
         return $this->UIStylesheet() . $dir;
     }
-
+	
+	public function erros($seperators = '<br />')
+	{
+		if ( ! empty($this->erros)) {
+			return implode($seperators, $this->erros);	
+		}
+	}
 }
 

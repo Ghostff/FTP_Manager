@@ -10,7 +10,7 @@ $config = array(
 	'port'		=> 21,
 	'timeout'	=> 90,
 	'username'	=> '...',
-	'password'	=> '....',
+	'password'	=> '...',
 	'path'		=> '',
 	'sync'		=> false,
 	'sync_dir'	=> 'ghostffFTP',
@@ -20,6 +20,5 @@ $config = array(
 
 $ftp = new Ftp($config);
 
-//var_dump($ftp->erros);
-
-echo( $ftp->directories('permisions'));
+echo $ftp->erros();
+echo $ftp->directories();
